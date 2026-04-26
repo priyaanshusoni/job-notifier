@@ -1,24 +1,16 @@
-import twilio from "twilio";
 import dotenv from "dotenv";
+dotenv.config();
+import express from "express";
+import { prefRouter } from "./modules/preferences/preferences.router";
 
-dotenv.config({
-  path: "../.env",
+const app = express();
+
+app.use(express.json());
+
+app.use("/preferences", prefRouter);
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
-
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const client = twilio(accountSid, authToken);
-
-console.log(accountSid, authToken);
-
-async function createMessage() {
-  const message = await client.messages.create({
-    body: "hi , this is a test message from twilio",
-    from: `whatsapp:${process.env.TWILIO_NUMBER}`,
-    to: `whatsapp:${process.env.MY_WHATSAPP_NUMBER}`,
-  });
-
-  console.log(message.body);
-}
-
-createMessage();
