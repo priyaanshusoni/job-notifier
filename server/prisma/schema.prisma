@@ -1,0 +1,68 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          Int      @id @default(autoincrement())
+  email       String   @unique
+  password    String   // bcrypt hashed, never plain text
+  isOnboarded Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  preference     Preference?
+  telegramConfig TelegramConfig?
+  seenJobs       SeenJob[]
+}
+
+model Preference {
+  id         Int      @id @default(autoincrement())
+  roles      String[] // ["Full Stack Developer", "React Developer"]
+  skills     String[] // ["Next.js", "TypeScript", "Node.js"]
+  location   String[] // ["Jaipur", "Remote", "Bangalore"]
+  minSalary  Int      // 800000
+  experience String   // "1-3 years"
+  metaInfo   String   // "product companies, remote, startups"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TelegramConfig {
+  id        Int      @id @default(autoincrement())
+  botToken  String   // AES-256 encrypted before storing
+  chatId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SeenJob {
+  id        String   @id // job ID from API
+  title     String
+  company   String
+  score     Int      // Gemini relevance score 0-100
+  reason    String   // Gemini explanation
+  source    String   // "LinkedIn", "Indeed", "Naukri"
+  applyLink String
+  seenAt    DateTime @default(now())
+
+  // Relations
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
