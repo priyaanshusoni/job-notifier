@@ -15,7 +15,7 @@ export async function runJobPipelineForUser(userId: number) {
     throw new Error("User is missing preference or telegram config");
   }
 
-  const jobs = await fetchJSearchJobs(user.preference);
+  const jobs = await fetchJSearchJobs();
 
   console.log("jobs came as ", jobs);
 
