@@ -7,7 +7,10 @@ import { prefRouter } from "./modules/preferences/preferences.router";
 import { telegramRouter } from "./modules/telegram/telegram.router";
 import { ErrorHandler } from "./middlewares/error.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
-import { apiRateLimit, triggerRateLimit } from "./middlewares/rateLimit.middleware";
+import {
+  apiRateLimit,
+  triggerRateLimit,
+} from "./middlewares/rateLimit.middleware";
 import {
   runJobPipelineForUser,
   startScheduler,
@@ -20,11 +23,15 @@ const app = express();
 // --- Core Middleware ---
 app.use(cors({ origin: "http://localhost:3001", credentials: true }));
 app.use(express.json());
-app.use(apiRateLimit); // Apply general rate limit to all routes
+// app.use(apiRateLimit); // Apply general rate limit to all routes
 
 // --- Public Routes ---
 app.get("/health", (_req, res) => {
-  res.json({ success: true, message: "Server is healthy", timestamp: new Date() });
+  res.json({
+    success: true,
+    message: "Server is healthy",
+    timestamp: new Date(),
+  });
 });
 
 app.use("/auth", authRouter);
@@ -37,8 +44,9 @@ app.use("/telegram", telegramRouter);
 app.get(
   "/jobs/trigger",
   authMiddleware,
-  triggerRateLimit,
+
   async (req, res, next) => {
+    console.log("request reached hereeee");
     try {
       const userId = (req as any).user.userId;
       const stats = await runJobPipelineForUser(userId);

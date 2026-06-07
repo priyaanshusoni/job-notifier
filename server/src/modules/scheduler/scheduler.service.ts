@@ -17,6 +17,8 @@ export async function runJobPipelineForUser(userId: number) {
 
   const jobs = await fetchJSearchJobs(user.preference);
 
+  console.log("jobs came as ", jobs);
+
   const seenJobs = await prisma.seenJob.findMany({
     where: { userId },
     select: { id: true },
