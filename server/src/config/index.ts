@@ -7,6 +7,19 @@ dotenv.config({
   path: path.resolve(process.cwd(), `.env.${env}`),
 });
 
+const isProd = env === "production";
+const isString = (value: string | undefined): value is string => Boolean(value);
+
+const ALLOWED_ORIGINS = (
+  isProd
+    ? [process.env.ALLOWED_ORIGIN]
+    : [
+        process.env.ALLOWED_ORIGIN,
+        "http://localhost:3000",
+        "http://localhost:3001",
+      ]
+).filter(isString);
+
 const JSEARCH_API_KEY = process.env.JSEARCH_API_KEY;
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -24,4 +37,5 @@ export const CONFIG_PROVIDER = {
   ENCRYPTION_KEY,
   PORT,
   ENVIRONMENT: env,
+  ALLOWED_ORIGINS,
 };
