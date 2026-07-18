@@ -1,19 +1,14 @@
 import { prisma } from "../../lib/prisma";
-
-interface PreferenceInput {
-  roles: string[];
-  skills: string[];
-  location: string[];
-  minSalary: number;
-  experience: string;
-  metaInfo: string;
-}
+import { PreferenceInput } from "../../lib/types";
 
 async function setPreferences(userId: number, data: PreferenceInput) {
   return prisma.preference.upsert({
     where: { userId },
     update: data,
-    create: { userId, ...data },
+    create: {
+      userId,
+      ...data,
+    },
   });
 }
 

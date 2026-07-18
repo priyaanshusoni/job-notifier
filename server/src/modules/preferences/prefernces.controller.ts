@@ -3,7 +3,7 @@ import { PreferenceService } from "./preferences.service";
 
 async function getPreferences(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = (req as any).user.userId;
+    const userId = (req as any)?.user?.userId;
     const data = await PreferenceService.getPreferences(userId);
     res.status(200).json({ success: true, data });
   } catch (err) {

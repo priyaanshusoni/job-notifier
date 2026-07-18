@@ -1,18 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { CONFIG_PROVIDER } from "../../config";
+import { PreferenceInput } from "../../lib/types";
 
 const ai = new GoogleGenAI({ apiKey: CONFIG_PROVIDER.GEMINI_API_KEY });
 
-interface Preference {
-  roles: string[];
-  skills: string[];
-  location: string[];
-  minSalary: number;
-  experience: string;
-  metaInfo: string;
-}
-
-export async function matchJobs(jobs: any[], preference: Preference) {
+export async function matchJobs(jobs: any[], preference: PreferenceInput) {
   if (jobs.length === 0) return [];
 
   const jobDetails = jobs
@@ -64,7 +56,8 @@ Score each job from 0 to 100 based on how relevant it is to the user preferences
                   },
                   reason: {
                     type: Type.STRING,
-                    description: "A short explanation for why this score was given",
+                    description:
+                      "A short explanation for why this score was given",
                   },
                 },
                 required: ["score", "reason"],

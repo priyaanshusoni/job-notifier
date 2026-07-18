@@ -7,10 +7,7 @@ import { prefRouter } from "./modules/preferences/preferences.router";
 import { telegramRouter } from "./modules/telegram/telegram.router";
 import { ErrorHandler } from "./middlewares/error.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
-import {
-  apiRateLimit,
-  triggerRateLimit,
-} from "./middlewares/rateLimit.middleware";
+
 import {
   runJobPipelineForUser,
   startScheduler,
