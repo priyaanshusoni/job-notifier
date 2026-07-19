@@ -1,13 +1,22 @@
 "use client";
 
-import { Form, Input, InputNumber, Select, Button, Row, Col } from "antd";
+import { Form, Input, InputNumber, Select, Button, Row, Col, Switch, Slider } from "antd";
 import type { FormInstance, Rule } from "antd/es/form";
 import type { ReactNode } from "react";
 
 export interface FormField {
   name: string;
   label: string;
-  type: "text" | "password" | "textarea" | "number" | "select" | "multiselect";
+  type:
+    | "text"
+    | "password"
+    | "textarea"
+    | "number"
+    | "select"
+    | "multiselect"
+    | "tags"
+    | "switch"
+    | "slider";
   placeholder?: string;
   tooltip?: string;
   rules?: Rule[];
@@ -42,6 +51,13 @@ function renderInput(field: FormField) {
       return <Select placeholder={placeholder} options={options} size="large" {...inputProps} />;
     case "multiselect":
       return <Select mode="multiple" placeholder={placeholder} options={options} size="large" allowClear {...inputProps} />;
+    case "tags":
+      // Suggested options + free-form custom entries
+      return <Select mode="tags" placeholder={placeholder} options={options} size="large" allowClear {...inputProps} />;
+    case "switch":
+      return <Switch {...inputProps} />;
+    case "slider":
+      return <Slider {...inputProps} />;
   }
 }
 
@@ -58,7 +74,13 @@ export function FormRenderer({
       <Row gutter={16}>
         {fields.map((field) => (
           <Col key={field.name} span={field.colSpan ?? 24}>
-            <Form.Item name={field.name} label={field.label} rules={field.rules} tooltip={field.tooltip}>
+            <Form.Item
+              name={field.name}
+              label={field.label}
+              rules={field.rules}
+              tooltip={field.tooltip}
+              valuePropName={field.type === "switch" ? "checked" : "value"}
+            >
               {renderInput(field)}
             </Form.Item>
           </Col>

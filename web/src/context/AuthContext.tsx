@@ -7,19 +7,17 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
-import { User } from "@/lib/api";
+import { api, User, SESSION_EXPIRED_EVENT } from "@/lib/api";
 
 interface AuthContextValue {
   user: User | null;
-  token: string | null;
-  setAuth: (token: string, user: User) => void;
+  setAuth: (user: User) => void;
   logout: () => void;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
-  token: null,
   setAuth: () => {},
   logout: () => {},
   isLoading: true,
@@ -27,41 +25,40 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // The JWT lives in an httpOnly cookie the browser sends automatically,
+  // so the session is restored by asking the server who we are.
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem("token");
-      const storedUser = localStorage.getItem("user");
-      if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-      }
-    } catch {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-    } finally {
-      setIsLoading(false);
-    }
+    api.auth
+      .me()
+      .then((res) => setUser(res.user))
+      .catch(() => setUser(null))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const setAuth = useCallback((newToken: string, newUser: User) => {
-    localStorage.setItem("token", newToken);
-    localStorage.setItem("user", JSON.stringify(newUser));
-    setToken(newToken);
+  const setAuth = useCallback((newUser: User) => {
     setUser(newUser);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setToken(null);
     setUser(null);
+    // Clears the httpOnly cookie server-side; fire-and-forget
+    api.auth.logout().catch(() => {});
+  }, []);
+
+  // Expired/invalid session detected by the API client → log out everywhere
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null);
+      window.location.href = "/login";
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, setAuth, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, setAuth, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

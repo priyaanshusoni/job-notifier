@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { encrypt, decrypt } from "../../lib/crypto";
+import { logger } from "../../lib/logger";
 
 async function saveTelegramConfig(
   userId: number,
@@ -18,12 +19,18 @@ async function getTelegramConfig(userId: number) {
   const config = await prisma.telegramConfig.findUnique({ where: { userId } });
   if (!config) return null;
 
-  // Decrypt before returning — never expose encrypted blob to client
+  // Mask the REAL token (decrypt first), never expose the encrypted blob.
+  let masked = "***";
+  try {
+    masked = "***" + decrypt(config.botToken).slice(-6);
+  } catch (err) {
+    logger.error({ err, userId }, "Failed to decrypt telegram token for masking");
+  }
+
   return {
     id: config.id,
     chatId: config.chatId,
-    // Mask the bot token for security — only show last 6 chars
-    botToken: "***" + config.botToken.slice(-6),
+    botToken: masked,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };
@@ -32,7 +39,12 @@ async function getTelegramConfig(userId: number) {
 async function getTelegramConfigRaw(userId: number) {
   const config = await prisma.telegramConfig.findUnique({ where: { userId } });
   if (!config) return null;
-  return { botToken: decrypt(config.botToken), chatId: config.chatId };
+  try {
+    return { botToken: decrypt(config.botToken), chatId: config.chatId };
+  } catch (err) {
+    logger.error({ err, userId }, "Failed to decrypt telegram token");
+    return null;
+  }
 }
 
 export const TelegramConfigService = {

@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma";
-import { PreferenceInput } from "../../lib/types";
+import { PreferenceInput } from "../../lib/validation";
 
 async function setPreferences(userId: number, data: PreferenceInput) {
   return prisma.preference.upsert({

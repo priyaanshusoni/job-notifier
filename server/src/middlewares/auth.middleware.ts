@@ -9,13 +9,17 @@ export function authMiddleware(
   res: Response,
   next: NextFunction,
 ) {
+  // Primary: httpOnly access cookie. Fallback: Bearer header (API clients).
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  const token =
+    (req as any).cookies?.accessToken ??
+    (authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null);
+
+  if (!token) {
     res.status(401).json({ success: false, message: "Unauthorized" });
     return;
   }
 
-  const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     (req as any).user = decoded;
