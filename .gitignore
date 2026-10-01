@@ -8,5 +8,10 @@ build/
 *.tmp
 .idea/
 .vscode/
+agent.md
 
-/src/generated/prisma
+
+*.env.development
+*.env.production
+*.env
+server/src/generated/prisma
