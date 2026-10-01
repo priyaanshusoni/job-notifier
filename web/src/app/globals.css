@@ -98,6 +98,14 @@ body {
   animation: pulse-glow 2s infinite;
 }
 
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .pulse-glow {
+    animation: none;
+  }
+}
+
 /* Auth pages */
 .auth-page {
   display: flex;

@@ -1,73 +1,47 @@
 import "./config";
 import express from "express";
 import cors from "cors";
-
+import cookieParser from "cookie-parser";
 import { authRouter } from "./modules/auth/auth.router";
 import { prefRouter } from "./modules/preferences/preferences.router";
 import { telegramRouter } from "./modules/telegram/telegram.router";
+import { jobsRouter } from "./modules/jobs/jobs.router";
+import { aiRouter } from "./modules/ai/ai.router";
 import { ErrorHandler } from "./middlewares/error.middleware";
-import { authMiddleware } from "./middlewares/auth.middleware";
-
-import {
-  runJobPipelineForUser,
-  startScheduler,
-} from "./modules/scheduler/scheduler.service";
+import { apiRateLimit } from "./middlewares/rateLimit.middleware";
+import { startScheduler } from "./modules/scheduler/scheduler.service";
 import { prisma } from "./lib/prisma";
+import { logger } from "./lib/logger";
 import { CONFIG_PROVIDER } from "./config";
 
 const app = express();
 
-// --- Core Middleware ---
 app.use(cors({ origin: CONFIG_PROVIDER.ALLOWED_ORIGINS, credentials: true }));
-app.use(express.json());
-// app.use(apiRateLimit); // Apply general rate limit to all routes
+app.use(cookieParser());
+app.use(express.json({ limit: "256kb" }));
+app.use(apiRateLimit);
 
 // --- Public Routes ---
-app.get("/health", (_req, res) => {
-  res.json({
-    success: true,
-    message: "Server is healthy",
-    timestamp: new Date(),
-  });
+app.get("/health", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      success: true,
+      message: "Server is healthy",
+      timestamp: new Date(),
+    });
+  } catch {
+    res.status(503).json({ success: false, message: "Database unreachable" });
+  }
 });
 
 app.use("/auth", authRouter);
 
-// --- Protected Routes ---
+// --- Protected Routes  ---
 app.use("/preferences", prefRouter);
 app.use("/telegram", telegramRouter);
-
-// Manually trigger pipeline for the current user
-app.get(
-  "/jobs/trigger",
-  authMiddleware,
-
-  async (req, res, next) => {
-    console.log("request reached hereeee");
-    try {
-      const userId = (req as any).user.userId;
-      const stats = await runJobPipelineForUser(userId);
-      res.json({ success: true, message: "Pipeline ran successfully", stats });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-// Get job history for the current user
-app.get("/jobs/history", authMiddleware, async (req, res, next) => {
-  try {
-    const userId = (req as any).user.userId;
-    const jobs = await prisma.seenJob.findMany({
-      where: { userId },
-      orderBy: { seenAt: "desc" },
-      take: 50,
-    });
-    res.json({ success: true, data: jobs });
-  } catch (err) {
-    next(err);
-  }
-});
+app.use("/jobs", jobsRouter);
+app.use("/ai", aiRouter);
 
 // --- Error Handler ---
 app.use(ErrorHandler);
@@ -77,5 +51,5 @@ startScheduler();
 const PORT = CONFIG_PROVIDER.PORT;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}`);
 });

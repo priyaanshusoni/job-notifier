@@ -2,89 +2,87 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Button, Tag, Table, Progress, Tooltip, Spin,
-  Modal, Form,
+  Button, Tag, Spin, Modal, Form, Alert, Input, Popconfirm,
 } from "antd";
 import {
   ThunderboltOutlined, SendOutlined, LogoutOutlined,
   RocketOutlined, EditOutlined, CheckOutlined, CloseOutlined,
-  LinkOutlined, ReloadOutlined, UserOutlined,
+  ReloadOutlined, UserOutlined, FileTextOutlined, DeleteOutlined,
+  UnorderedListOutlined, ClockCircleOutlined,
 } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
-import { api, Preference, TelegramConfig, SeenJob } from "@/lib/api";
+import Link from "next/link";
+import {
+  api, Preference, TelegramConfig, JobItem, PipelineStatus, PreferenceInput,
+} from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { AuthGuard } from "@/components/AuthGuard";
 import { FormRenderer } from "@/components/FormRenderer";
-import { PREFERENCE_FIELDS, TELEGRAM_FIELDS } from "@/lib/formFields";
+import { JobsTable } from "@/components/JobsTable";
+import { PREFERENCE_FIELDS, ALERT_FIELDS, TELEGRAM_FIELDS, PREFERENCE_DEFAULTS } from "@/lib/formFields";
 import { useNotify } from "@/hooks/useNotify";
-import type { ColumnsType } from "antd/es/table";
 
-function ScoreBadge({ score }: { score: number }) {
-  const color =
-    score >= 90 ? "#22c55e" :
-    score >= 75 ? "#3b82f6" :
-    score >= 60 ? "#f59e0b" : "#ef4444";
-  return (
-    <Progress
-      type="circle"
-      percent={score}
-      size={36}
-      strokeColor={color}
-      strokeWidth={8}
-      format={(p) => <span style={{ color, fontSize: 10, fontWeight: 700 }}>{p}</span>}
-    />
-  );
-}
-
-export default function DashboardPage() {
+function DashboardContent() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const notify = useNotify();
 
   const [preference, setPreference] = useState<Preference | null>(null);
   const [telegramConfig, setTelegramConfig] = useState<TelegramConfig | null>(null);
-  const [jobHistory, setJobHistory] = useState<SeenJob[]>([]);
+  const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [pipeline, setPipeline] = useState<PipelineStatus | null>(null);
+  const [resume, setResume] = useState<{ hasResume: boolean; skills: string[] } | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const notify = useNotify();
   const [triggering, setTriggering] = useState(false);
+  const [testingTg, setTestingTg] = useState(false);
 
   const [editPrefOpen, setEditPrefOpen] = useState(false);
   const [editTgOpen, setEditTgOpen] = useState(false);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const [resumeText, setResumeText] = useState("");
   const [saving, setSaving] = useState(false);
   const [prefForm] = Form.useForm();
   const [tgForm] = Form.useForm();
 
   const loadData = useCallback(async () => {
+    setLoadError(null);
     try {
-      const [prefRes, tgRes, histRes] = await Promise.all([
-        api.preferences.get().catch(() => ({ data: null })),
-        api.telegram.get().catch(() => ({ data: null })),
-        api.jobs.history().catch(() => ({ data: [] })),
+      const [prefRes, tgRes, histRes, statusRes, resumeRes] = await Promise.all([
+        api.preferences.get(),
+        api.telegram.get(),
+        api.jobs.history(),
+        api.jobs.pipelineStatus(),
+        api.ai.resumeStatus(),
       ]);
       setPreference(prefRes.data);
       setTelegramConfig(tgRes.data);
-      setJobHistory(histRes.data || []);
+      setJobs(histRes.data || []);
+      setPipeline(statusRes.data);
+      setResume(resumeRes.data);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
       setPageLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!user) { router.replace("/login"); return; }
-    if (!user.isOnboarded) { router.replace("/onboarding/step-1"); return; }
     loadData();
-  }, [user, router, loadData]);
+  }, [loadData]);
 
   const handleTrigger = async () => {
     try {
       setTriggering(true);
       const res = await api.jobs.trigger();
+      const s = res.stats;
       notify.success(
-        `Pipeline complete! Fetched ${res.stats?.total ?? "?"} jobs, ${res.stats?.matched ?? "?"} matched.`
+        `Done! ${s.fetched} fetched · ${s.new} new · ${s.evaluated} AI-scored · ${s.matched} matched · ${s.notified} sent`,
       );
-      const hist = await api.jobs.history();
-      setJobHistory(hist.data || []);
+      await loadData();
     } catch (err) {
-      notify.error(err, "Failed to run pipeline");
+      notify.error(err, "Pipeline failed");
     } finally {
       setTriggering(false);
     }
@@ -94,7 +92,7 @@ export default function DashboardPage() {
     try {
       const values = await prefForm.validateFields();
       setSaving(true);
-      const res = await api.preferences.save(values);
+      const res = await api.preferences.save(values as PreferenceInput);
       setPreference(res.data);
       setEditPrefOpen(false);
       notify.success("Preferences saved!");
@@ -123,66 +121,47 @@ export default function DashboardPage() {
     }
   };
 
-  const openEditPref = () => {
-    if (preference) prefForm.setFieldsValue(preference);
-    setEditPrefOpen(true);
+  const testTelegram = async () => {
+    try {
+      setTestingTg(true);
+      await api.telegram.test();
+      notify.success("Test message sent — check your Telegram!");
+    } catch (err) {
+      notify.error(err, "Test failed. Re-check your bot token and chat ID.");
+    } finally {
+      setTestingTg(false);
+    }
   };
 
-  const columns: ColumnsType<SeenJob> = [
-    {
-      title: "Score",
-      dataIndex: "score",
-      width: 70,
-      sorter: (a, b) => b.score - a.score,
-      defaultSortOrder: "ascend",
-      render: (score) => <ScoreBadge score={score} />,
-    },
-    {
-      title: "Job",
-      dataIndex: "title",
-      render: (title, record) => (
-        <div>
-          <p className="text-sm font-semibold text-text-primary">{title}</p>
-          <p className="text-xs text-text-muted">{record.company}</p>
-        </div>
-      ),
-    },
-    {
-      title: "Source",
-      dataIndex: "source",
-      width: 110,
-      render: (src) => <Tag>{src}</Tag>,
-    },
-    {
-      title: "AI Reason",
-      dataIndex: "reason",
-      render: (reason) => (
-        <Tooltip title={reason}>
-          <span className="text-xs text-text-secondary line-clamp-2 cursor-help">{reason}</span>
-        </Tooltip>
-      ),
-    },
-    {
-      title: "Date",
-      dataIndex: "seenAt",
-      width: 100,
-      render: (date) => (
-        <span className="text-xs text-text-muted">
-          {new Date(date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-        </span>
-      ),
-    },
-    {
-      title: "Apply",
-      dataIndex: "applyLink",
-      width: 70,
-      render: (link) => (
-        <a href={link} target="_blank" rel="noreferrer" className="text-accent hover:opacity-75 transition-opacity">
-          <LinkOutlined />
-        </a>
-      ),
-    },
-  ];
+  const saveResume = async () => {
+    try {
+      setSaving(true);
+      const res = await api.ai.saveResume(resumeText);
+      setResume({ hasResume: true, skills: res.data.skills });
+      setResumeOpen(false);
+      setResumeText("");
+      notify.success(`Resume saved — ${res.data.skills.length} skills extracted`);
+    } catch (err) {
+      notify.error(err, "Failed to process resume");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteResume = async () => {
+    try {
+      await api.ai.deleteResume();
+      setResume({ hasResume: false, skills: [] });
+      notify.success("Resume deleted");
+    } catch (err) {
+      notify.error(err, "Failed to delete resume");
+    }
+  };
+
+  const openEditPref = () => {
+    prefForm.setFieldsValue({ ...PREFERENCE_DEFAULTS, ...(preference ?? {}) });
+    setEditPrefOpen(true);
+  };
 
   if (pageLoading) {
     return (
@@ -192,9 +171,10 @@ export default function DashboardPage() {
     );
   }
 
+  const lastRun = pipeline?.lastRun;
+
   return (
     <div className="min-h-screen bg-bg-primary">
-      {/* Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full bg-accent opacity-[0.03] blur-3xl" />
         <div className="absolute bottom-0 left-0 w-[600px] h-[600px] rounded-full bg-blue-600 opacity-[0.03] blur-3xl" />
@@ -210,6 +190,11 @@ export default function DashboardPage() {
             <span className="font-bold text-text-primary">Job Notifier</span>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/jobs">
+              <Button icon={<UnorderedListOutlined />}>
+                <span className="hidden sm:inline">All Jobs</span>
+              </Button>
+            </Link>
             <div className="hidden sm:flex items-center gap-2 rounded-full border border-border bg-bg-card px-3 py-1.5">
               <UserOutlined className="text-text-muted text-xs" />
               <span className="text-xs text-text-secondary">{user?.email}</span>
@@ -226,36 +211,83 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8 space-y-6">
-        {/* Trigger Pipeline */}
+        {loadError && (
+          <Alert
+            type="error"
+            showIcon
+            message="Could not load your data"
+            description={loadError}
+            action={<Button size="small" onClick={loadData}>Retry</Button>}
+          />
+        )}
+
+        {/* Pipeline panel */}
         <section className="relative overflow-hidden rounded-2xl border border-(--accent)/30 bg-accent-light p-6 fade-in">
           <div className="absolute inset-0 bg-linear-to-r from-(--accent)/8 to-blue-400/8 pointer-events-none" />
-          <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold text-text-primary">
-                <RocketOutlined className="text-accent" />
-                Run Job Pipeline
-              </h2>
-              <p className="mt-1 text-sm text-text-secondary">
-                Fetch, score & deliver today&apos;s best matching jobs via Telegram
-              </p>
+          <div className="relative space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-text-primary">
+                  <RocketOutlined className="text-accent" />
+                  Job Pipeline
+                </h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Search is built from your preferences, scored by AI, delivered to Telegram
+                </p>
+              </div>
+              <Button
+                id="trigger-pipeline-btn"
+                type="primary"
+                size="large"
+                icon={triggering ? <ReloadOutlined spin /> : <ThunderboltOutlined />}
+                loading={triggering || pipeline?.running}
+                onClick={handleTrigger}
+                className="pulse-glow"
+                style={{ minWidth: 160 }}
+              >
+                {triggering || pipeline?.running ? "Running..." : "Run Now"}
+              </Button>
             </div>
-            <Button
-              id="trigger-pipeline-btn"
-              type="primary"
-              size="large"
-              icon={triggering ? <ReloadOutlined spin /> : <ThunderboltOutlined />}
-              loading={triggering}
-              onClick={handleTrigger}
-              className="pulse-glow"
-              style={{ minWidth: 160 }}
-            >
-              {triggering ? "Running..." : "Trigger Now"}
-            </Button>
+
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-text-secondary">
+              {lastRun ? (
+                <>
+                  <span>
+                    Last run:{" "}
+                    <span className={lastRun.status === "success" ? "text-success" : "text-red-400"}>
+                      {lastRun.status === "success" ? "succeeded" : "failed"}
+                    </span>{" "}
+                    {new Date(lastRun.startedAt).toLocaleString("en-IN", {
+                      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                    })}{" "}
+                    ({lastRun.trigger})
+                  </span>
+                  {lastRun.stats && (
+                    <span>
+                      {lastRun.stats.fetched} fetched · {lastRun.stats.new} new ·{" "}
+                      {lastRun.stats.matched} matched · {lastRun.stats.notified} alerted
+                    </span>
+                  )}
+                  {lastRun.error && <span className="text-red-400">{lastRun.error}</span>}
+                </>
+              ) : (
+                <span>No runs yet</span>
+              )}
+              {pipeline && (
+                <span className="flex items-center gap-1">
+                  <ClockCircleOutlined />
+                  Next scheduled:{" "}
+                  {new Date(pipeline.nextScheduledAt).toLocaleString("en-IN", {
+                    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                  })}
+                </span>
+              )}
+            </div>
           </div>
         </section>
 
         {/* Config Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 fade-in">
           {/* Preferences Card */}
           <div className="card">
             <div className="flex items-center justify-between mb-5">
@@ -263,7 +295,7 @@ export default function DashboardPage() {
                 <div className="icon-box">
                   <RocketOutlined className="text-accent text-xs" />
                 </div>
-                <h3 className="font-semibold text-text-primary">Job Preferences</h3>
+                <h3 className="font-semibold text-text-primary">Preferences</h3>
               </div>
               <Button id="edit-pref-btn" size="small" icon={<EditOutlined />} onClick={openEditPref}>
                 Edit
@@ -271,7 +303,7 @@ export default function DashboardPage() {
             </div>
 
             {preference ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
                   <p className="section-label">Roles</p>
                   <div className="flex flex-wrap gap-1.5">
@@ -281,13 +313,17 @@ export default function DashboardPage() {
                 <div>
                   <p className="section-label">Skills</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {preference.skills.slice(0, 8).map((s) => <Tag key={s}>{s}</Tag>)}
-                    {preference.skills.length > 8 && (
-                      <Tag>+{preference.skills.length - 8} more</Tag>
-                    )}
+                    {preference.skills.slice(0, 6).map((s) => <Tag key={s}>{s}</Tag>)}
+                    {preference.skills.length > 6 && <Tag>+{preference.skills.length - 6} more</Tag>}
                   </div>
                 </div>
-                <div className="flex gap-6">
+                <div>
+                  <p className="section-label">Locations</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {preference.location.map((l) => <Tag key={l}>{l}</Tag>)}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
                   <div>
                     <p className="section-label">Min Salary</p>
                     <p className="text-sm font-medium text-text-primary">
@@ -298,7 +334,17 @@ export default function DashboardPage() {
                     <p className="section-label">Experience</p>
                     <p className="text-sm font-medium text-text-primary">{preference.experience}</p>
                   </div>
+                  <div>
+                    <p className="section-label">Threshold</p>
+                    <p className="text-sm font-medium text-text-primary">{preference.minScore}+</p>
+                  </div>
                 </div>
+                {preference.metaInfo && (
+                  <div>
+                    <p className="section-label">Notes</p>
+                    <p className="text-xs text-text-secondary">{preference.metaInfo}</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="py-6 text-center">
@@ -315,7 +361,7 @@ export default function DashboardPage() {
                 <div className="icon-box">
                   <SendOutlined className="text-accent text-xs" />
                 </div>
-                <h3 className="font-semibold text-text-primary">Telegram Config</h3>
+                <h3 className="font-semibold text-text-primary">Telegram</h3>
               </div>
               <Button id="edit-tg-btn" size="small" icon={<EditOutlined />} onClick={() => setEditTgOpen(true)}>
                 Edit
@@ -324,18 +370,17 @@ export default function DashboardPage() {
 
             {telegramConfig ? (
               <div className="space-y-3">
-                <div className="rounded-xl border border-border bg-bg-secondary p-4">
+                <div className="rounded-xl border border-border bg-bg-secondary p-3">
                   <p className="section-label">Bot Token</p>
                   <p className="font-mono text-sm text-text-primary">{telegramConfig.botToken}</p>
                 </div>
-                <div className="rounded-xl border border-border bg-bg-secondary p-4">
+                <div className="rounded-xl border border-border bg-bg-secondary p-3">
                   <p className="section-label">Chat ID</p>
                   <p className="font-mono text-sm text-text-primary">{telegramConfig.chatId}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-success" />
-                  <span className="text-xs text-success">Connected</span>
-                </div>
+                <Button size="small" loading={testingTg} onClick={testTelegram} icon={<SendOutlined />}>
+                  Send test message
+                </Button>
               </div>
             ) : (
               <div className="py-6 text-center">
@@ -346,40 +391,63 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* Resume Card */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <div className="icon-box">
+                  <FileTextOutlined className="text-accent text-xs" />
+                </div>
+                <h3 className="font-semibold text-text-primary">Resume (AI)</h3>
+              </div>
+              <Button size="small" icon={<EditOutlined />} onClick={() => setResumeOpen(true)}>
+                {resume?.hasResume ? "Update" : "Add"}
+              </Button>
+            </div>
+
+            {resume?.hasResume ? (
+              <div className="space-y-3">
+                <p className="text-xs text-text-secondary">
+                  Skills from your resume are weighed as demonstrated experience during scoring.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {resume.skills.slice(0, 10).map((s) => <Tag key={s}>{s}</Tag>)}
+                  {resume.skills.length > 10 && <Tag>+{resume.skills.length - 10} more</Tag>}
+                </div>
+                <Popconfirm title="Delete your resume data?" onConfirm={deleteResume}>
+                  <Button size="small" danger icon={<DeleteOutlined />}>Delete</Button>
+                </Popconfirm>
+              </div>
+            ) : (
+              <p className="text-sm text-text-muted py-4">
+                Optional: paste your resume to make match scores resume-aware. Stored encrypted; delete anytime.
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Job History */}
+        {/* Recent matches */}
         <section className="fade-in overflow-hidden rounded-2xl border border-border bg-bg-card">
           <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-text-primary">Job History</h3>
-              {jobHistory.length > 0 && (
+              <h3 className="font-semibold text-text-primary">Recent Matches</h3>
+              {jobs.length > 0 && (
                 <span className="rounded-full bg-accent-light px-2 py-0.5 text-xs font-medium text-accent">
-                  {jobHistory.length}
+                  {jobs.length}
                 </span>
               )}
             </div>
-            <Button id="refresh-history-btn" size="small" icon={<ReloadOutlined />} onClick={loadData}>
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Link href="/jobs">
+                <Button size="small" icon={<UnorderedListOutlined />}>View all & filter</Button>
+              </Link>
+              <Button id="refresh-history-btn" size="small" icon={<ReloadOutlined />} onClick={loadData}>
+                Refresh
+              </Button>
+            </div>
           </div>
-          <Table
-            dataSource={jobHistory}
-            columns={columns}
-            rowKey="id"
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            locale={{
-              emptyText: (
-                <div className="py-12 text-center">
-                  <ThunderboltOutlined className="text-3xl text-text-muted mb-3" />
-                  <p className="text-sm text-text-muted">
-                    No jobs yet. Hit &quot;Trigger Now&quot; to run the pipeline!
-                  </p>
-                </div>
-              ),
-            }}
-            scroll={{ x: 600 }}
-          />
+          <JobsTable jobs={jobs} onChanged={setJobs} />
         </section>
       </main>
 
@@ -394,10 +462,10 @@ export default function DashboardPage() {
         cancelText="Cancel"
         okButtonProps={{ icon: <CheckOutlined /> }}
         cancelButtonProps={{ icon: <CloseOutlined /> }}
-        width={580}
+        width={620}
       >
         <div className="mt-4">
-          <FormRenderer form={prefForm} fields={PREFERENCE_FIELDS} />
+          <FormRenderer form={prefForm} fields={[...PREFERENCE_FIELDS, ...ALERT_FIELDS]} />
         </div>
       </Modal>
 
@@ -416,6 +484,36 @@ export default function DashboardPage() {
           <FormRenderer form={tgForm} fields={TELEGRAM_FIELDS} />
         </div>
       </Modal>
+
+      {/* Resume Modal */}
+      <Modal
+        open={resumeOpen}
+        title="Paste your resume"
+        onCancel={() => setResumeOpen(false)}
+        onOk={saveResume}
+        confirmLoading={saving}
+        okText="Save & Extract Skills"
+        okButtonProps={{ disabled: resumeText.trim().length < 50 }}
+        width={640}
+      >
+        <p className="text-xs text-text-muted mb-3">
+          Plain text works best. It is stored encrypted, used only for scoring your matches, and can be deleted anytime.
+        </p>
+        <Input.TextArea
+          value={resumeText}
+          onChange={(e) => setResumeText(e.target.value)}
+          rows={12}
+          placeholder="Paste your resume text here..."
+        />
+      </Modal>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <AuthGuard requires="onboarded">
+      <DashboardContent />
+    </AuthGuard>
   );
 }
