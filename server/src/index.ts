@@ -46,10 +46,14 @@ app.use("/ai", aiRouter);
 // --- Error Handler ---
 app.use(ErrorHandler);
 
-// --- Start ---
-startScheduler();
-const PORT = CONFIG_PROVIDER.PORT;
+// --- Start (Only in non-serverless environments) ---
+if (!process.env.VERCEL) {
+  startScheduler();
+  const PORT = CONFIG_PROVIDER.PORT;
+  app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-});
+export default app;
+export { app };
