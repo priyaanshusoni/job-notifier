@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, Input, Button, Alert } from "antd";
 import {
   MailOutlined,
@@ -15,15 +15,21 @@ import { useAuth } from "@/context/AuthContext";
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { setAuth } = useAuth();
+  const { setAuth, user, isLoading } = useAuth();
   const router = useRouter();
+
+  // Already signed in → skip the login wall
+  useEffect(() => {
+    if (isLoading || !user) return;
+    router.replace(user.isOnboarded ? "/dashboard" : "/onboarding/step-1");
+  }, [user, isLoading, router]);
 
   const onFinish = async (values: { email: string; password: string }) => {
     try {
       setLoading(true);
       setError(null);
       const result = await api.auth.login(values.email, values.password);
-      setAuth(result.token, result.user);
+      setAuth(result.user);
       if (result.user.isOnboarded) {
         router.push("/dashboard");
       } else {

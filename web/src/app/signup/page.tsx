@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, Input, Button } from "antd";
 import { MailOutlined, LockOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import Link from "next/link";
@@ -11,16 +11,23 @@ import { useNotify } from "@/hooks/useNotify";
 
 export default function SignupPage() {
   const [loading, setLoading] = useState(false);
-  const { setAuth } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const notify = useNotify();
+
+  // Already signed in → skip signup
+  useEffect(() => {
+    if (isLoading || !user) return;
+    router.replace(user.isOnboarded ? "/dashboard" : "/onboarding/step-1");
+  }, [user, isLoading, router]);
 
   const onFinish = async (values: { email: string; password: string }) => {
     try {
       setLoading(true);
-      const result = await api.auth.signup(values.email, values.password);
-      setAuth(result.token, result.user);
-      router.push("/onboarding/step-1");
+      await api.auth.signup(values.email, values.password);
+      // Signup creates the account only — a session is issued at sign-in
+      notify.success("Account created! Sign in to continue.");
+      router.push("/login");
     } catch (err) {
       notify.error(err, "Signup failed");
     } finally {

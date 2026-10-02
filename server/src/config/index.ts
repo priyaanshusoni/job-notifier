@@ -10,6 +10,16 @@ dotenv.config({
 const isProd = env === "production";
 const isString = (value: string | undefined): value is string => Boolean(value);
 
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `Missing required environment variable "${name}". Set it in .env.${env} — refusing to start with an insecure default.`,
+    );
+  }
+  return value;
+}
+
 const ALLOWED_ORIGINS = (
   isProd
     ? [process.env.ALLOWED_ORIGIN]
@@ -20,22 +30,20 @@ const ALLOWED_ORIGINS = (
       ]
 ).filter(isString);
 
-const JSEARCH_API_KEY = process.env.JSEARCH_API_KEY;
-
-const DATABASE_URL = process.env.DATABASE_URL;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_change_in_prod";
-const ENCRYPTION_KEY =
-  process.env.ENCRYPTION_KEY || "12345678901234567890123456789012"; // 32 chars
-const PORT = process.env.PORT || 3000;
+const JWT_SECRET = required("JWT_SECRET");
+const ENCRYPTION_KEY = required("ENCRYPTION_KEY");
+if (ENCRYPTION_KEY.length !== 32) {
+  throw new Error("ENCRYPTION_KEY must be exactly 32 characters (AES-256).");
+}
 
 export const CONFIG_PROVIDER = {
-  JSEARCH_API_KEY,
-  DATABASE_URL,
-  GEMINI_API_KEY,
+  JSEARCH_API_KEY: required("JSEARCH_API_KEY"),
+  DATABASE_URL: required("DATABASE_URL"),
+  GEMINI_API_KEY: required("GEMINI_API_KEY"),
   JWT_SECRET,
   ENCRYPTION_KEY,
-  PORT,
+  PORT: process.env.PORT || 3000,
   ENVIRONMENT: env,
+  IS_PROD: isProd,
   ALLOWED_ORIGINS,
 };
