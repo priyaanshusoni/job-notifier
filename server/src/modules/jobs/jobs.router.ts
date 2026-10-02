@@ -1,13 +1,43 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { triggerRateLimit } from "../../middlewares/rateLimit.middleware";
-import { runJobPipelineForUser } from "../scheduler/scheduler.service";
+import {
+  runJobPipeline,
+  runJobPipelineForUser,
+} from "../scheduler/scheduler.service";
 import { JobsService } from "./jobs.service";
 import { jobStatusSchema } from "../../lib/validation";
 import { explainJobFit } from "../ai/ai.service";
 import { ApiError } from "../../lib/errors";
 
 const jobsRouter = Router();
+
+// Cron trigger endpoint (used by Vercel Cron or external scheduler)
+jobsRouter.get(
+  "/cron",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (
+        process.env.CRON_SECRET &&
+        authHeader !== `Bearer ${process.env.CRON_SECRET}`
+      ) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Unauthorized cron request" });
+      }
+      const result = await runJobPipeline();
+      res.json({
+        success: true,
+        message: "Job pipeline executed successfully",
+        result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 jobsRouter.use(authMiddleware);
 
 // Manually run the pipeline for the current user (state-changing → POST)
